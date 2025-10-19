@@ -108,6 +108,8 @@
 
 <!-- Total Earnings KPI (collision-safe) -->
 <section class="section" id="oih-total-kpi-section">
+<p class="text-center text-gray-400 mb-4">💡 This shows the total amount earned by our community through all connected earning apps — live and automatically updated from our Discord bot.</p>
+
 <div class="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4">
 <div class="bg-gray-800/70 border border-gray-700 rounded-2xl p-5 text-center shadow-md">
 <div class="text-gray-400 text-sm">Total Earnings</div>
@@ -130,6 +132,11 @@
 <div class="section-header"><span class="sq"></span>
 <h2 class="text-3xl font-bold text-white mb-2 text-center">🏆 Community Leaderboard</h2>
 </div>
+<p class="text-center text-gray-400 mb-6">
+  👇 Want to appear here? Just post your earnings in the Discord channels (e.g. <code>+1$ on #freecash</code>) and your name will automatically show up in the leaderboard.<br>
+  <span class="text-xs text-gray-500">(Beta phase for October — starting November, Top 10 earners will win prizes! 🎁)</span>
+</p>
+
 <p class="text-center text-gray-400 mb-6">
     Live totals from our Discord earnings (auto-updated).
   </p>
@@ -666,7 +673,7 @@
 <script>
 (function(){
   // Avoid globals by scoping everything in an IIFE
-  const OIH_API = "/.netlify/functions/leaderboard"; // TODO: replace with your VM IP
+  const OIH_API = "http://89.168.31.30/leaderboard.json"; // TODO: replace with your VM IP
   function $(id){ return document.getElementById(id); }
   async function loadLeaderboard(){
     try {
@@ -700,7 +707,7 @@
 
 <script>
 (function(){
-  const OIH_API = "/.netlify/functions/leaderboard"; // TODO: replace with your VM IP
+  const OIH_API = "http://89.168.31.30/leaderboard.json"; // TODO: replace with your VM IP
   function $(id){ return document.getElementById(id); }
   async function loadKPI(){
     try {
