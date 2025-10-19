@@ -887,5 +887,54 @@
 })();
 </script>
 
+
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => `€${Number(n||0).toFixed(2)}`;
+
+  let data;
+  try {
+    const res = await fetch('/.netlify/functions/leaderboard?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+  } catch (e) {
+    console.error('leaderboard fetch failed', e);
+    if ($('oih-lb-summary')) $('oih-lb-summary').textContent = 'Could not load data.';
+    return;
+  }
+
+  // Map API -> UI
+  const month = data.month || data.period || '';
+  const total = data.total_earnings ?? data.total ?? 0;
+  const top = Array.isArray(data.top10) ? data.top10 : (Array.isArray(data.top) ? data.top : []);
+
+  if ($('oih-total-kpi')) $('oih-total-kpi').textContent = fmt(total);
+  if ($('oih-total-month') && month) $('oih-total-month').textContent = 'Month: ' + month;
+
+  if (top.length) {
+    const first = top[0];
+    if ($('oih-top1-name')) $('oih-top1-name').textContent = first.user || '—';
+    if ($('oih-top1-amt')) $('oih-top1-amt').textContent = fmt(first.amount || 0);
+  }
+
+  const list = $('oih-lb-list');
+  if (list) {
+    list.innerHTML = '';
+    if (top.length) {
+      top.forEach((r) => {
+        const li = document.createElement('li');
+        li.textContent = (r.user || '—') + ': ' + fmt(r.amount || 0);
+        list.appendChild(li);
+      });
+      if ($('oih-lb-summary')) $('oih-lb-summary').textContent = 'Top ' + top.length + ' earners this month';
+    } else {
+      if ($('oih-lb-summary')) $('oih-lb-summary').textContent = 'No entries yet.';
+      const li = document.createElement('li'); li.textContent='—'; list.appendChild(li);
+    }
+  }
+})();
+</script>
+
 </body>
 </html>
