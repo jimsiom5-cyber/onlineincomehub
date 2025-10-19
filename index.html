@@ -745,196 +745,129 @@
 </script>
 
 
-<script>
-(async () => {
-  const fmt = (n) => (typeof n === "number" ? `€${n.toFixed(2)}` : n);
-  const $ = (id) => document.getElementById(id);
-
-  const url = "/.netlify/functions/leaderboard";
-  let data;
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    console.error("Fetch leaderboard failed:", err);
-    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "Could not load data (check Netlify function).";
-    return;
-  }
-
-  if ($("oih-total-kpi") && data.total_eur != null) $("oih-total-kpi").textContent = fmt(data.total_eur);
-  if ($("oih-total-month") && data.month) $("oih-total-month").textContent = `Month: ${data.month}`;
-  if ($("oih-total-updated") && data.updated) $("oih-total-updated").textContent = `Last update: ${data.updated}`;
-
-  if ($("oih-top1-name")) {
-    if (Array.isArray(data.top) && data.top.length) {
-      $("oih-top1-name").textContent = data.top[0].user || "—";
-      if ($("oih-top1-amt")) $("oih-top1-amt").textContent = fmt(data.top[0].amount_eur || 0);
-    } else {
-      $("oih-top1-name").textContent = "—";
-      if ($("oih-top1-amt")) $("oih-top1-amt").textContent = "€0.00";
-    }
-  }
-
-  const list = $("oih-lb-list");
-  if (list) {
-    list.innerHTML = "";
-    if (Array.isArray(data.top) && data.top.length) {
-      data.top.forEach((row) => {
-        const li = document.createElement("li");
-        li.textContent = `${row.user}: ${fmt(row.amount_eur || 0)}`;
-        list.appendChild(li);
-      });
-      if ($("oih-lb-summary")) $("oih-lb-summary").textContent = `Top ${data.top.length} earners this month`;
-    } else {
-      if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "No entries yet.";
-    }
-    if ($("oih-lb-updated") && data.updated) $("oih-lb-updated").textContent = `Updated: ${data.updated}`;
-  }
-})();
-</script>
 
 
 <script>
-(async () => {
-  const $ = (id) => document.getElementById(id);
-  const fmt = (n) => (typeof n === "number" ? `€${n.toFixed(2)}` : (n ?? ""));
-
-  // helpers
-  const firstNonNull = (o, keys) => {
-    for (const k of keys) {
-      if (o && o[k] != null) return o[k];
-    }
-    return null;
-  };
-  const firstArray = (o, keys) => {
-    for (const k of keys) {
-      if (o && Array.isArray(o[k])) return o[k];
-    }
-    return null;
+(() => {
+  const state = {
+    intervalMs: 60000,         // start 60s
+    maxIntervalMs: 300000,     // cap 5 min
+    timer: null,
+    last: { total: null, topName: null, topAmt: null, listJson: "" },
   };
 
-  let payload;
-  try {
-    const res = await fetch("/.netlify/functions/leaderboard", { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    payload = await res.json();
-  } catch (e) {
-    console.error("fetch failed:", e);
-    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "Could not load data.";
-    return;
+  const fmtUSD = v => Number(v || 0).toLocaleString('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2
+  });
+
+  function setText(el, val){
+    if (!el) return;
+    if (el.textContent !== val) el.textContent = val;
   }
 
-  // unwrap common wrappers
-  let data = payload && (payload.data || payload.result || payload);
-  // read fields with multiple fallbacks
-  const month = firstNonNull(data, ["month","period","month_readable"]);
-  const total = firstNonNull(data, ["total_eur","totalEUR","total","total_all_eur","total_all"]);
-  const updated = firstNonNull(data, ["updated","updated_at","last_update","lastUpdated"]);
-  let top = firstArray(data, ["top","leaderboard","leaders","rows","items","users","entries"]);
-
-  // some APIs nest under data.stats etc
-  if (!top) {
-    const maybe = firstNonNull(data, ["stats","summary","leaderboardData"]);
-    if (maybe) {
-      top = firstArray(maybe, ["top","leaderboard","leaders","rows","items","users","entries"]) || null;
-    }
-  }
-
-  // Fill KPI
-  if ($("oih-total-kpi") && total != null) {
-    const num = typeof total === "number" ? total : parseFloat(total);
-    $("oih-total-kpi").textContent = isNaN(num) ? fmt(total) : fmt(num);
-  }
-  if ($("oih-total-month") && month) $("oih-total-month").textContent = `Month: ${month}`;
-  if ($("oih-total-updated") && updated) $("oih-total-updated").textContent = `Last update: ${updated}`;
-
-  // Top 1 + list
-  const list = $("oih-lb-list");
-  if (Array.isArray(top) && top.length) {
-    // normalize rows
-    const userKeys = ["user","username","name","nick","member","id"];
-    const amtKeys  = ["amount_eur","amountEUR","eur","amount","total_eur","total","value","sum"];
-    const rows = top.map(r => {
-      let user = firstNonNull(r, userKeys);
-      let val  = firstNonNull(r, amtKeys);
-      // try nested e.g. r.user.name
-      if (!user && r.user && typeof r.user === "object") user = firstNonNull(r.user, ["name","username","nick","id"]);
-      // to number if possible
-      const num = typeof val === "number" ? val : parseFloat(val);
-      return { user: user ?? "—", amount: isNaN(num) ? 0 : num };
+  function setList(listEl, items){
+    if (!listEl) return;
+    const jsonNow = JSON.stringify(items);
+    if (jsonNow === state.last.listJson) return; // no change
+    state.last.listJson = jsonNow;
+    listEl.innerHTML = "";
+    items.forEach((entry, idx) => {
+      const row = document.createElement(listEl.tagName.toLowerCase() === 'ol' ? 'li' : 'div');
+      row.className = 'flex justify-between text-gray-200 border-b border-gray-700 py-1';
+      row.innerHTML = `<span class="text-white font-semibold">${idx+1}. ${entry.user}</span>
+                       <span class="text-green-400 font-bold">${fmtUSD(entry.amount)}</span>`;
+      listEl.appendChild(row);
     });
-
-    // Top1
-    if ($("oih-top1-name")) $("oih-top1-name").textContent = rows[0].user;
-    if ($("oih-top1-amt")) $("oih-top1-amt").textContent = fmt(rows[0].amount);
-
-    // List
-    if (list) {
-      list.innerHTML = "";
-      rows.forEach(r => {
-        const li = document.createElement("li");
-        li.textContent = `${r.user}: ${fmt(r.amount)}`;
-        list.appendChild(li);
-      });
-    }
-    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = `Top ${rows.length} earners this month`;
-    if ($("oih-lb-updated") && updated) $("oih-lb-updated").textContent = `Updated: ${updated}`;
-  } else {
-    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "No entries yet.";
-    if (list) list.innerHTML = "<li>—</li>";
-  }
-})();
-</script>
-
-
-<script>
-(async () => {
-  const $ = (id) => document.getElementById(id);
-  const fmt = (n) => `€${Number(n||0).toFixed(2)}`;
-
-  let data;
-  try {
-    const res = await fetch('/.netlify/functions/leaderboard?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    data = await res.json();
-  } catch (e) {
-    console.error('leaderboard fetch failed', e);
-    if ($('oih-lb-summary')) $('oih-lb-summary').textContent = 'Could not load data.';
-    return;
   }
 
-  // Map API -> UI
-  const month = data.month || data.period || '';
-  const total = data.total_earnings ?? data.total ?? 0;
-  const top = Array.isArray(data.top10) ? data.top10 : (Array.isArray(data.top) ? data.top : []);
-
-  if ($('oih-total-kpi')) $('oih-total-kpi').textContent = fmt(total);
-  if ($('oih-total-month') && month) $('oih-total-month').textContent = 'Month: ' + month;
-
-  if (top.length) {
-    const first = top[0];
-    if ($('oih-top1-name')) $('oih-top1-name').textContent = first.user || '—';
-    if ($('oih-top1-amt')) $('oih-top1-amt').textContent = fmt(first.amount || 0);
+  function setLoading(on){
+    const sum = document.getElementById('oih-lb-summary');
+    if (sum) sum.textContent = on ? 'Loading…' : '';
   }
 
-  const list = $('oih-lb-list');
-  if (list) {
-    list.innerHTML = '';
-    if (top.length) {
-      top.forEach((r) => {
-        const li = document.createElement('li');
-        li.textContent = (r.user || '—') + ': ' + fmt(r.amount || 0);
-        list.appendChild(li);
-      });
-      if ($('oih-lb-summary')) $('oih-lb-summary').textContent = 'Top ' + top.length + ' earners this month';
-    } else {
-      if ($('oih-lb-summary')) $('oih-lb-summary').textContent = 'No entries yet.';
-      const li = document.createElement('li'); li.textContent='—'; list.appendChild(li);
+  async function fetchJSON(url, timeoutMs=10000){
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try{
+      const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally { clearTimeout(t); }
+  }
+
+  async function getData(){
+    // 1st try Netlify function
+    try { return await fetchJSON('/.netlify/functions/leaderboard'); }
+    catch(e1){
+      console.warn('Netlify function failed, fallback to direct JSON', e1);
+      // fallback to direct JSON (same domain/public)
+      return await fetchJSON('/leaderboard.json');
     }
   }
+
+  async function updateUSD(){
+    try{
+      setLoading(true);
+      const data = await getData();
+
+      const totalEl = document.getElementById('oih-total-kpi');
+      const monthEl = document.getElementById('oih-total-month');
+      const topName = document.getElementById('oih-top1-name');
+      const topAmt  = document.getElementById('oih-top1-amt');
+      const listEl  = document.getElementById('oih-leaderboard-list') || document.getElementById('oih-lb-list');
+      const fxEl    = document.getElementById('oih-fx-rate');
+      const updEl   = document.getElementById('oih-total-updated');
+      const lbUpdEl = document.getElementById('oih-lb-updated');
+
+      // totals
+      const total = fmtUSD(data.total_earnings);
+      if (state.last.total !== total){ state.last.total = total; setText(totalEl, total); }
+      if (monthEl && data.month) setText(monthEl, `(${data.month})`);
+
+      // top 1
+      if (data.top10 && data.top10.length){
+        const tName = data.top10[0].user;
+        const tAmt  = fmtUSD(data.top10[0].amount);
+        if (state.last.topName !== tName){ state.last.topName = tName; setText(topName, tName); }
+        if (state.last.topAmt !== tAmt){ state.last.topAmt = tAmt; setText(topAmt, tAmt); }
+        setList(listEl, data.top10);
+      } else {
+        setList(listEl, []);
+      }
+
+      // fx + timestamps
+      if (fxEl && data.fx && data.fx.eur_to_usd) setText(fxEl, `FX EUR→USD: ${data.fx.eur_to_usd}`);
+      const ts = new Date().toLocaleString();
+      if (updEl) setText(updEl, `Last updated: ${ts}`);
+      if (lbUpdEl) setText(lbUpdEl, `Last updated: ${ts}`);
+
+      // success -> reset backoff
+      state.intervalMs = 60000;
+    } catch(err){
+      console.error('USD update failed:', err);
+      // grow interval (backoff)
+      state.intervalMs = Math.min(state.intervalMs * 2, state.maxIntervalMs);
+    } finally {
+      setLoading(false);
+      schedule();
+    }
+  }
+
+  function schedule(){
+    if (state.timer) clearTimeout(state.timer);
+    if (document.hidden) return; // paused in background
+    state.timer = setTimeout(updateUSD, state.intervalMs);
+  }
+
+  // Pause on hidden, resume on visible
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { state.intervalMs = 60000; updateUSD(); }
+  });
+  window.addEventListener('focus', () => { state.intervalMs = 60000; updateUSD(); });
+
+  // First run
+  updateUSD();
 })();
 </script>
-
 </body>
 </html>
