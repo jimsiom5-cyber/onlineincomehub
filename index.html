@@ -794,5 +794,98 @@
 })();
 </script>
 
+
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => (typeof n === "number" ? `€${n.toFixed(2)}` : (n ?? ""));
+
+  // helpers
+  const firstNonNull = (o, keys) => {
+    for (const k of keys) {
+      if (o && o[k] != null) return o[k];
+    }
+    return null;
+  };
+  const firstArray = (o, keys) => {
+    for (const k of keys) {
+      if (o && Array.isArray(o[k])) return o[k];
+    }
+    return null;
+  };
+
+  let payload;
+  try {
+    const res = await fetch("/.netlify/functions/leaderboard", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    payload = await res.json();
+  } catch (e) {
+    console.error("fetch failed:", e);
+    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "Could not load data.";
+    return;
+  }
+
+  // unwrap common wrappers
+  let data = payload && (payload.data || payload.result || payload);
+  // read fields with multiple fallbacks
+  const month = firstNonNull(data, ["month","period","month_readable"]);
+  const total = firstNonNull(data, ["total_eur","totalEUR","total","total_all_eur","total_all"]);
+  const updated = firstNonNull(data, ["updated","updated_at","last_update","lastUpdated"]);
+  let top = firstArray(data, ["top","leaderboard","leaders","rows","items","users","entries"]);
+
+  // some APIs nest under data.stats etc
+  if (!top) {
+    const maybe = firstNonNull(data, ["stats","summary","leaderboardData"]);
+    if (maybe) {
+      top = firstArray(maybe, ["top","leaderboard","leaders","rows","items","users","entries"]) || null;
+    }
+  }
+
+  // Fill KPI
+  if ($("oih-total-kpi") && total != null) {
+    const num = typeof total === "number" ? total : parseFloat(total);
+    $("oih-total-kpi").textContent = isNaN(num) ? fmt(total) : fmt(num);
+  }
+  if ($("oih-total-month") && month) $("oih-total-month").textContent = `Month: ${month}`;
+  if ($("oih-total-updated") && updated) $("oih-total-updated").textContent = `Last update: ${updated}`;
+
+  // Top 1 + list
+  const list = $("oih-lb-list");
+  if (Array.isArray(top) && top.length) {
+    // normalize rows
+    const userKeys = ["user","username","name","nick","member","id"];
+    const amtKeys  = ["amount_eur","amountEUR","eur","amount","total_eur","total","value","sum"];
+    const rows = top.map(r => {
+      let user = firstNonNull(r, userKeys);
+      let val  = firstNonNull(r, amtKeys);
+      // try nested e.g. r.user.name
+      if (!user && r.user && typeof r.user === "object") user = firstNonNull(r.user, ["name","username","nick","id"]);
+      // to number if possible
+      const num = typeof val === "number" ? val : parseFloat(val);
+      return { user: user ?? "—", amount: isNaN(num) ? 0 : num };
+    });
+
+    // Top1
+    if ($("oih-top1-name")) $("oih-top1-name").textContent = rows[0].user;
+    if ($("oih-top1-amt")) $("oih-top1-amt").textContent = fmt(rows[0].amount);
+
+    // List
+    if (list) {
+      list.innerHTML = "";
+      rows.forEach(r => {
+        const li = document.createElement("li");
+        li.textContent = `${r.user}: ${fmt(r.amount)}`;
+        list.appendChild(li);
+      });
+    }
+    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = `Top ${rows.length} earners this month`;
+    if ($("oih-lb-updated") && updated) $("oih-lb-updated").textContent = `Updated: ${updated}`;
+  } else {
+    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "No entries yet.";
+    if (list) list.innerHTML = "<li>—</li>";
+  }
+})();
+</script>
+
 </body>
 </html>
