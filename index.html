@@ -744,5 +744,55 @@
 })();
 </script>
 
+
+<script>
+(async () => {
+  const fmt = (n) => (typeof n === "number" ? `€${n.toFixed(2)}` : n);
+  const $ = (id) => document.getElementById(id);
+
+  const url = "/.netlify/functions/leaderboard";
+  let data;
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    console.error("Fetch leaderboard failed:", err);
+    if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "Could not load data (check Netlify function).";
+    return;
+  }
+
+  if ($("oih-total-kpi") && data.total_eur != null) $("oih-total-kpi").textContent = fmt(data.total_eur);
+  if ($("oih-total-month") && data.month) $("oih-total-month").textContent = `Month: ${data.month}`;
+  if ($("oih-total-updated") && data.updated) $("oih-total-updated").textContent = `Last update: ${data.updated}`;
+
+  if ($("oih-top1-name")) {
+    if (Array.isArray(data.top) && data.top.length) {
+      $("oih-top1-name").textContent = data.top[0].user || "—";
+      if ($("oih-top1-amt")) $("oih-top1-amt").textContent = fmt(data.top[0].amount_eur || 0);
+    } else {
+      $("oih-top1-name").textContent = "—";
+      if ($("oih-top1-amt")) $("oih-top1-amt").textContent = "€0.00";
+    }
+  }
+
+  const list = $("oih-lb-list");
+  if (list) {
+    list.innerHTML = "";
+    if (Array.isArray(data.top) && data.top.length) {
+      data.top.forEach((row) => {
+        const li = document.createElement("li");
+        li.textContent = `${row.user}: ${fmt(row.amount_eur || 0)}`;
+        list.appendChild(li);
+      });
+      if ($("oih-lb-summary")) $("oih-lb-summary").textContent = `Top ${data.top.length} earners this month`;
+    } else {
+      if ($("oih-lb-summary")) $("oih-lb-summary").textContent = "No entries yet.";
+    }
+    if ($("oih-lb-updated") && data.updated) $("oih-lb-updated").textContent = `Updated: ${data.updated}`;
+  }
+})();
+</script>
+
 </body>
 </html>
