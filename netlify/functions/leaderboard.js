@@ -1,20 +1,16 @@
-export async function handler(event, context) {
-  const API_URL = "http://89.168.31.30/leaderboard.json";
+export async function handler() {
   try {
-    const res = await fetch(API_URL);
-    const data = await res.text();
+    const res = await fetch("http://89.168.31.30/leaderboard.json");
+    const data = await res.json();
     return {
       statusCode: 200,
       headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json"
       },
-      body: data
+      body: JSON.stringify(data)
     };
   } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Failed to fetch leaderboard", details: err.message })
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 }
