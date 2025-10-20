@@ -1,17 +1,34 @@
-import crypto from "node:crypto";
+const crypto = require("crypto");
+const https = require("https");
 
-export async function handler(event, context) {
+function httpGet(url, headers) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, { method: "GET", headers }, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => {
+        try {
+          const body = data ? JSON.parse(data) : {};
+          resolve({ statusCode: res.statusCode, body });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+exports.handler = async () => {
   try {
     const apiKey = process.env.BITGET_API_KEY;
     const secretKey = process.env.BITGET_API_SECRET;
     const passphrase = process.env.BITGET_PASSPHRASE;
 
-    const timestamp = Date.now().toString();
-    const baseUrl = "https://api.bitget.com";
     const endpoint = "/api/v2/account/assets";
-    const method = "GET";
-
-    const prehash = timestamp + method + endpoint;
+    const timestamp = Date.now().toString();
+    const prehash = timestamp + "GET" + endpoint;
     const sign = crypto.createHmac("sha256", secretKey).update(prehash).digest("base64");
 
     const headers = {
@@ -22,28 +39,29 @@ export async function handler(event, context) {
       "Content-Type": "application/json",
     };
 
-    const resp = await fetch(baseUrl + endpoint, { headers });
-    const json = await resp.json();
+    const { statusCode, body } = await httpGet("https://api.bitget.com" + endpoint, headers);
 
-    if (!resp.ok || !json?.data) {
-      return { statusCode: 500, body: JSON.stringify({ error: json?.msg || "Bitget fetch failed" }) };
+    if (statusCode !== 200 || !body?.data) {
+      return { statusCode: 500, body: JSON.stringify({ error: body?.msg || "Bitget fetch failed" }) };
     }
 
-    const assets = json.data.map(a => ({
-      coin: a.coin,
-      available: parseFloat(a.available),
-      frozen: parseFloat(a.frozen),
-      usdValue: parseFloat(a.usdtValue),
-    }));
+    const assets = body.data
+      .map((a) => ({
+        coin: a.coin,
+        available: parseFloat(a.available),
+        frozen: parseFloat(a.frozen),
+        usdValue: parseFloat(a.usdtValue),
+      }))
+      .filter((a) => a.usdValue > 0.01);
 
     const totalValueUSD = assets.reduce((s, a) => s + (a.usdValue || 0), 0);
 
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ totalValueUSD, assets: assets.filter(a => a.usdValue > 0.01) }),
+      body: JSON.stringify({ totalValueUSD, assets }),
     };
   } catch (e) {
     return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
-}
+};
