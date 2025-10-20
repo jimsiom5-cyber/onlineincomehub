@@ -1,5 +1,4 @@
-import crypto from "crypto";
-import fetch from "node-fetch";
+import crypto from "node:crypto";
 
 export async function handler(event, context) {
   try {
@@ -23,38 +22,28 @@ export async function handler(event, context) {
       "Content-Type": "application/json",
     };
 
-    const response = await fetch(baseUrl + endpoint, { headers });
-    const json = await response.json();
+    const resp = await fetch(baseUrl + endpoint, { headers });
+    const json = await resp.json();
 
-    if (!response.ok || !json.data) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: json.msg || "Failed to fetch Bitget portfolio" }),
-      };
+    if (!resp.ok || !json?.data) {
+      return { statusCode: 500, body: JSON.stringify({ error: json?.msg || "Bitget fetch failed" }) };
     }
 
-    const portfolio = json.data.map((asset) => ({
-      coin: asset.coin,
-      available: parseFloat(asset.available),
-      frozen: parseFloat(asset.frozen),
-      usdValue: parseFloat(asset.usdtValue),
+    const assets = json.data.map(a => ({
+      coin: a.coin,
+      available: parseFloat(a.available),
+      frozen: parseFloat(a.frozen),
+      usdValue: parseFloat(a.usdtValue),
     }));
 
-    const totalValue = portfolio.reduce((sum, a) => sum + (a.usdValue || 0), 0);
+    const totalValueUSD = assets.reduce((s, a) => s + (a.usdValue || 0), 0);
 
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        totalValueUSD: totalValue,
-        assets: portfolio.filter(a => a.usdValue > 0.01),
-      }),
+      body: JSON.stringify({ totalValueUSD, assets: assets.filter(a => a.usdValue > 0.01) }),
     };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
-    };
+  } catch (e) {
+    return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 }
-
