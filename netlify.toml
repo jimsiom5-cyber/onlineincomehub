@@ -1,7 +1,11 @@
-# netlify.toml
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
+[build]
+  publish = "."
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "18"   # δουλεύει άψογα με τον κώδικα χωρίς fetch
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."*"]
+  timeout = 10
