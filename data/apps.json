@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "updatedAt": "2026-01-23T00:00:00Z",
+  "apps": [
+    {
+      "id": "money-sms",
+      "name": "Money SMS",
+      "type": "Passive",
+      "category": "SMS Receiver",
+      "bonus": "€0.25 with code SKK9RHON",
+      "minCashout": "$2",
+      "payout": ["PayPal", "LTC", "BTC"],
+      "link": "https://moneysmsapp.com",
+      "tags": ["sms", "passive"],
+      "isActive": true
+    }
+  ]
+}
