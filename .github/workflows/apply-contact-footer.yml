@@ -1,0 +1,81 @@
+name: Apply contact footer cleanup
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-contact-footer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Update index.html
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          # Remove Partnerships from the top navigation.
+          text = re.sub(
+              r'\s*<a class="nav-link" href="#partners">Partnerships</a>',
+              '',
+              text,
+              count=1
+          )
+
+          # Remove the full Partnerships / Business-Media section.
+          text, removed = re.subn(
+              r'\n?<!-- Partnerships -->\s*<section class="section" id="partners">.*?</section>\s*(?=<!-- Footer -->)',
+              '\n',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if removed != 1:
+              raise SystemExit("Could not uniquely find the Partnerships section.")
+
+          # Replace the old minimal footer with a clean contact footer.
+          new_footer = """<!-- Footer -->
+<footer class="bg-gray-900/50 border-t border-gray-800 py-8 mt-10">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+    <p class="text-gray-300 text-sm">
+      For collaborations, partnerships or business inquiries:
+      <a class="text-indigo-300 hover:text-indigo-200 font-semibold ml-1"
+         href="mailto:dimitris_papaioannoy@yahoo.gr">📧 dimitris_papaioannoy@yahoo.gr</a>
+    </p>
+    <p class="text-gray-500 text-xs mt-3">© Online Income Hub</p>
+  </div>
+</footer>"""
+
+          text, replaced = re.subn(
+              r'<!-- Footer -->\s*<footer class="bg-gray-900/50 border-t border-gray-800 py-8 mt-10">.*?</footer>',
+              new_footer,
+              text,
+              count=1,
+              flags=re.S
+          )
+          if replaced != 1:
+              raise SystemExit("Could not uniquely find the existing footer.")
+
+          path.write_text(text, encoding="utf-8")
+      - name: Commit changes
+        run: |
+          git config user.name "Online Income Hub Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "No changes needed."
+            exit 0
+          fi
+          git commit -m "Simplify partnerships contact footer"
+          git push origin main
